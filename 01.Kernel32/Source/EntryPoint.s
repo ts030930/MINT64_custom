@@ -49,7 +49,7 @@ PROTECTEDMODE:
     call PRINTMESSAGE                               ;PRINTMESSAGE 함수 호출
     add esp, 12                                     ;삽입한 파라미터 제거
 
-    jmp $                                          ;현재 위치에서 무한 루프
+    jmp dword 0x08:0x10200                                      
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;  함수 코드 영역
