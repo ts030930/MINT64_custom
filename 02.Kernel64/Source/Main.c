@@ -1,20 +1,22 @@
 #include "Types.h"
 #include "Keyboard.h"
 #include "Descriptor.h"
+#include "PIC.h"
 #include "AssemblyUtility.h"
+
 // 함수 선언
 void kPrintString (int iX, int iY, const char* pcString);
 
-void Main( void )
-{
-    char vcTemp[ 2 ] = { 0, };
+// 아래 함수는 C언어 커널의 시작 부분임
+void Main(void){
+    char vcTemp[2] = { 0, };
     BYTE bFlags;
     BYTE bTemp;
     int i = 0;
     
     kPrintString( 0, 10, "Switch To IA-32e Mode Success~!!" );
     kPrintString( 0, 11, "IA-32e C Language Kernel Start..............[Pass]" );
-    
+
     kPrintString( 0, 12, "GDT Initialize And Switch For IA-32e Mode...[    ]" );
     kInitializeGDTTableAndTSS();
     kLoadGDTR( GDTR_STARTADDRESS );
@@ -30,7 +32,7 @@ void Main( void )
     kPrintString( 45, 14, "Pass" );
     
     kPrintString( 0, 15, "Keyboard Activate...........................[    ]" );
-    
+
     // 키보드를 활성화
     if( kActivateKeyboard() == TRUE )
     {
@@ -42,7 +44,14 @@ void Main( void )
         kPrintString( 45, 15, "Fail" );
         while( 1 ) ;
     }
-    
+
+    kPrintString( 0, 16, "PIC Controller And Interrupt Initialize.....[    ]" );
+    // PIC 컨트롤러 초기화 및 모든 인터럽트 활성화
+    kInitializePIC();
+    kMaskPICInterrupt( 0 );
+    kEnableInterrupt();
+    kPrintString( 45, 16, "Pass" );
+
     while( 1 )
     {
         // 출력 버퍼(포트 0x60)가 차 있으면 스캔 코드를 읽을 수 있음
@@ -58,7 +67,7 @@ void Main( void )
                 // 키가 눌러졌으면 키의 ASCII 코드 값을 화면에 출력
                 if( bFlags & KEY_FLAGS_DOWN )
                 {
-                    kPrintString( i++, 16, vcTemp );
+                    kPrintString( i++, 17, vcTemp );
                     // 0이 입력되면 변수를 0으로 나누어 Divide Error 예외(벡터 0번)을
                     // 발생시킴
                     if( vcTemp[ 0 ] == '0' )

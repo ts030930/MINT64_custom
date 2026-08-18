@@ -1,5 +1,6 @@
 #include "Descriptor.h"
 #include "Utility.h"
+#include "ISR.h"
 
 //==============================================================================
 //  GDT 및 TSS
@@ -20,6 +21,7 @@ void kInitializeGDTTableAndTSS( void )
     pstEntry = ( GDTENTRY8* ) ( GDTR_STARTADDRESS + sizeof( GDTR ) );
     pstGDTR->wLimit = GDT_TABLESIZE - 1;
     pstGDTR->qwBaseAddress = ( QWORD ) pstEntry;
+    
     // TSS 영역 설정
     pstTSS = ( TSSSEGMENT* ) ( ( QWORD ) pstEntry + GDT_TABLESIZE );
 
@@ -37,10 +39,8 @@ void kInitializeGDTTableAndTSS( void )
     kInitializeTSSSegment( pstTSS );
 }
 
-/**
- *  8바이트 크기의 GDT 엔트리에 값을 설정
- *      코드와 데이터 세그먼트 디스크립터를 설정하는데 사용
- */
+//  8바이트 크기의 GDT 엔트리에 값을 설정
+//  코드와 데이터 세그먼트 디스크립터를 설정하는데 사용
 void kSetGDTEntry8( GDTENTRY8* pstEntry, DWORD dwBaseAddress, DWORD dwLimit,
         BYTE bUpperFlags, BYTE bLowerFlags, BYTE bType )
 {
@@ -53,10 +53,8 @@ void kSetGDTEntry8( GDTENTRY8* pstEntry, DWORD dwBaseAddress, DWORD dwLimit,
     pstEntry->bUpperBaseAddress2 = ( dwBaseAddress >> 24 ) & 0xFF;
 }
 
-/**
- *  16바이트 크기의 GDT 엔트리에 값을 설정
- *      TSS 세그먼트 디스크립터를 설정하는데 사용
- */
+//  16바이트 크기의 GDT 엔트리에 값을 설정
+//  TSS 세그먼트 디스크립터를 설정하는데 사용
 void kSetGDTEntry16( GDTENTRY16* pstEntry, QWORD qwBaseAddress, DWORD dwLimit,
         BYTE bUpperFlags, BYTE bLowerFlags, BYTE bType )
 {
@@ -71,9 +69,7 @@ void kSetGDTEntry16( GDTENTRY16* pstEntry, QWORD qwBaseAddress, DWORD dwLimit,
     pstEntry->dwReserved = 0;
 }
 
-/**
- *  TSS 세그먼트의 정보를 초기화
- */
+//  TSS 세그먼트의 정보를 초기화
 void kInitializeTSSSegment( TSSSEGMENT* pstTSS )
 {
     kMemSet( pstTSS, 0, sizeof( TSSSEGMENT ) );
@@ -86,9 +82,7 @@ void kInitializeTSSSegment( TSSSEGMENT* pstTSS )
 //==============================================================================
 //  IDT
 //==============================================================================
-/**
- *  IDT 테이블을 초기화
- */
+//  IDT 테이블을 초기화
 void kInitializeIDTTables( void )
 {
     IDTR* pstIDTR;
@@ -101,18 +95,102 @@ void kInitializeIDTTables( void )
     pstEntry = ( IDTENTRY* ) ( IDTR_STARTADDRESS + sizeof( IDTR ) );
     pstIDTR->qwBaseAddress = ( QWORD ) pstEntry;
     pstIDTR->wLimit = IDT_TABLESIZE - 1;
-    
-    // 0~99까지 벡터를 모두 DummyHandler로 연결
-    for( i = 0 ; i < IDT_MAXENTRYCOUNT ; i++ )
+
+    //==========================================================================
+    // 예외 ISR 등록
+    //==========================================================================
+    kSetIDTEntry( &( pstEntry[ 0 ] ), kISRDivideError, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+    kSetIDTEntry( &( pstEntry[ 1 ] ), kISRDebug, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+    kSetIDTEntry( &( pstEntry[ 2 ] ), kISRNMI, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+    kSetIDTEntry( &( pstEntry[ 3 ] ), kISRBreakPoint, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+    kSetIDTEntry( &( pstEntry[ 4 ] ), kISROverflow, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+    kSetIDTEntry( &( pstEntry[ 5 ] ), kISRBoundRangeExceeded, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+    kSetIDTEntry( &( pstEntry[ 6 ] ), kISRInvalidOpcode, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+    kSetIDTEntry( &( pstEntry[ 7 ] ), kISRDeviceNotAvailable, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+    kSetIDTEntry( &( pstEntry[ 8 ] ), kISRDoubleFault, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+    kSetIDTEntry( &( pstEntry[ 9 ] ), kISRCoprocessorSegmentOverrun, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+    kSetIDTEntry( &( pstEntry[ 10 ] ), kISRInvalidTSS, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+    kSetIDTEntry( &( pstEntry[ 11 ] ), kISRSegmentNotPresent, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+    kSetIDTEntry( &( pstEntry[ 12 ] ), kISRStackSegmentFault, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+    kSetIDTEntry( &( pstEntry[ 13 ] ), kISRGeneralProtection, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+    kSetIDTEntry( &( pstEntry[ 14 ] ), kISRPageFault, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+    kSetIDTEntry( &( pstEntry[ 15 ] ), kISR15, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+    kSetIDTEntry( &( pstEntry[ 16 ] ), kISRFPUError, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+    kSetIDTEntry( &( pstEntry[ 17 ] ), kISRAlignmentCheck, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+    kSetIDTEntry( &( pstEntry[ 18 ] ), kISRMachineCheck, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+    kSetIDTEntry( &( pstEntry[ 19 ] ), kISRSIMDError, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+    kSetIDTEntry( &( pstEntry[ 20 ] ), kISRETCException, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+
+    for( i = 21 ; i < 32 ; i++ )
     {
-        kSetIDTEntry( &( pstEntry[ i ] ), kDummyHandler, 0x08, IDT_FLAGS_IST1, 
+        kSetIDTEntry( &( pstEntry[ i ] ), kISRETCException, 0x08, IDT_FLAGS_IST1,
+            IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+    }
+    //==========================================================================
+    // 인터럽트 ISR 등록
+    //==========================================================================
+    kSetIDTEntry( &( pstEntry[ 32 ] ), kISRTimer, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+    kSetIDTEntry( &( pstEntry[ 33 ] ), kISRKeyboard, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+    kSetIDTEntry( &( pstEntry[ 34 ] ), kISRSlavePIC, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+    kSetIDTEntry( &( pstEntry[ 35 ] ), kISRSerial2, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+    kSetIDTEntry( &( pstEntry[ 36 ] ), kISRSerial1, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+    kSetIDTEntry( &( pstEntry[ 37 ] ), kISRParallel2, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+    kSetIDTEntry( &( pstEntry[ 38 ] ), kISRFloppy, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+    kSetIDTEntry( &( pstEntry[ 39 ] ), kISRParallel1, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+    kSetIDTEntry( &( pstEntry[ 40 ] ), kISRRTC, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+    kSetIDTEntry( &( pstEntry[ 41 ] ), kISRReserved, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+    kSetIDTEntry( &( pstEntry[ 42 ] ), kISRNotUsed1, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+    kSetIDTEntry( &( pstEntry[ 43 ] ), kISRNotUsed2, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+    kSetIDTEntry( &( pstEntry[ 44 ] ), kISRMouse, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+    kSetIDTEntry( &( pstEntry[ 45 ] ), kISRCoprocessor, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+    kSetIDTEntry( &( pstEntry[ 46 ] ), kISRHDD1, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+    kSetIDTEntry( &( pstEntry[ 47 ] ), kISRHDD2, 0x08, IDT_FLAGS_IST1,
+        IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
+
+    for( i = 48 ; i < IDT_MAXENTRYCOUNT ; i++ )
+    {
+        kSetIDTEntry( &( pstEntry[ i ] ), kISRETCInterrupt, 0x08, IDT_FLAGS_IST1,
             IDT_FLAGS_KERNEL, IDT_TYPE_INTERRUPT );
     }
 }
 
-/**
- *  IDT 게이트 디스크립터에 값을 설정
- */
+//  IDT 게이트 디스크립터에 값을 설정
 void kSetIDTEntry( IDTENTRY* pstEntry, void* pvHandler, WORD wSelector, 
         BYTE bIST, BYTE bFlags, BYTE bType )
 {
@@ -123,17 +201,4 @@ void kSetIDTEntry( IDTENTRY* pstEntry, void* pvHandler, WORD wSelector,
     pstEntry->wMiddleBaseAddress = ( ( QWORD ) pvHandler >> 16 ) & 0xFFFF;
     pstEntry->dwUpperBaseAddress = ( QWORD ) pvHandler >> 32;
     pstEntry->dwReserved = 0;
-}
-
-/**
- *  임시 예외 또는 인터럽트 핸들러
- */
-void kDummyHandler( void )
-{
-    kPrintString( 0, 0, "====================================================" );
-    kPrintString( 0, 1, "          Dummy Interrupt Handler Execute~!!!       " );
-    kPrintString( 0, 2, "           Interrupt or Exception Occur~!!!!        " );
-    kPrintString( 0, 3, "====================================================" );
-
-    while( 1 ) ;
 }
