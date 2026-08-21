@@ -9,8 +9,8 @@ void kOutPortByte( WORD wPort, BYTE bData );
 void kLoadGDTR( QWORD qwGDTRAddress );
 void kLoadTR( WORD wTSSSegmentOffset );
 void kLoadIDTR( QWORD qwIDTRAddress);
-void kEnableInterrupt ( void );
-void kDisableIntterrupt ( void );
+void kEnableInterrupt( void );
+void kDisableInterrupt( void );
 QWORD kReadRFLAGS( void );
 
 #endif /*__ASSEMBLYUTILITY_H__*/
