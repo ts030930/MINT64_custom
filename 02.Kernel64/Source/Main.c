@@ -6,10 +6,17 @@
 #include "ConsoleShell.h"
 #include "Utility.h"
 #include "AssemblyUtility.h"
+#include "Task.h"
+#include "PIT.h"
+
 // 함수 선언
 void kPrintString (int iX, int iY, const char* pcString);
 
-// 아래 함수는 C 언어 커널의 시작 부분임
+
+
+/**
+ *  아래 함수는 C 언어 커널의 시작 부분임
+ */
 void Main( void )
 {
     int iCursorX, iCursorY;
@@ -44,6 +51,12 @@ void Main( void )
     kSetCursor( 45, iCursorY++ );
     kPrintf( "Pass], Size = %d MB\n", kGetTotalRAMSize() );
     
+    kPrintf( "TCB Pool And Scheduler Initialize...........[Pass]\n" );
+    iCursorY++;
+    kInitializeScheduler();
+    // 1ms당 한번씩 인터럽트가 발생하도록 설정
+    kInitializePIT( MSTOCOUNT( 1 ), 1 );
+    
     kPrintf( "Keyboard Activate And Queue Initialize......[    ]" );
     // 키보드를 활성화
     if( kInitializeKeyboard() == TRUE )
@@ -69,16 +82,4 @@ void Main( void )
 
     // 셸을 시작
     kStartConsoleShell();
-}
-
-
-//문자열 출력 함수
-void kPrintString(int iX, int iY, const char* pcString){
-    CHARACTER* pstScreen = (CHARACTER*) 0xB8000;
-    int i;
-
-    pstScreen += (iY * 80) + iX;
-    for(i = 0; pcString[i] != 0; i++){
-        pstScreen[i].bCharactor = pcString [i];
-    }
 }
