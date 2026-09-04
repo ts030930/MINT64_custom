@@ -429,3 +429,23 @@ int kVSPrintf( char* pcBuffer, const char* pcFormatString, va_list ap )
     pcBuffer[ iBufferIndex ] = '\0';
     return iBufferIndex;
 }
+
+/**
+ *  Tick Count를 반환
+ */
+QWORD kGetTickCount( void )
+{
+    return g_qwTickCount;
+}
+
+void kSleep( QWORD qwMillisecond )
+{
+    QWORD qwLastTickCount;
+    
+    qwLastTickCount = g_qwTickCount;
+    
+    while( ( g_qwTickCount - qwLastTickCount ) <= qwMillisecond )
+    {
+        kSchedule();
+    }
+}

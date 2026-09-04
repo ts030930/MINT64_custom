@@ -15,5 +15,6 @@ void kDisableInterrupt( void );
 void kSwitchContext( CONTEXT* pstCurrentContext, CONTEXT* pstNextContext );
 QWORD kReadRFLAGS( void );
 QWORD kReadTSC( void );
-
+void kHlt( void );
+BOOL kTestAndSet( volatile BYTE* pbDestination, BYTE bCompare, BYTE bSource );
 #endif /*__ASSEMBLYUTILITY_H__*/
