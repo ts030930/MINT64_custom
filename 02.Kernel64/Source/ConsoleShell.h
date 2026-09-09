@@ -1,10 +1,4 @@
-/**
- *  file    ConsoleShell.h
- *  date    2009/01/31
- *  author  kkamagui 
- *          Copyright(c)2008 All rights reserved by kkamagui
- *  brief   콘솔 셸에 관련된 헤더 파일
- */
+
 
 #ifndef __CONSOLESHELL_H__
 #define __CONSOLESHELL_H__
@@ -87,4 +81,9 @@ static void kCreateThreadTask( void );
 static void kTestThread( const char* pcParameterBuffer );
 static void kShowMatrix( const char* pcParameterBuffer );
 static void kTestPIE( const char* pcParameterBuffer );
+static void kShowDyanmicMemoryInformation( const char* pcParameterBuffer );
+static void kTestSequentialAllocation( const char* pcParameterBuffer );
+static void kTestRandomAllocation( const char* pcParameterBuffer );
+static void kRandomAllocationTask( void );
+
 #endif /*__CONSOLESHELL_H__*/
