@@ -7,6 +7,8 @@
 //  함수
 BYTE kInPortByte( WORD wPort );
 void kOutPortByte( WORD wPort, BYTE bData );
+WORD kInPortWord( WORD wPort );
+void kOutPortWord( WORD wPort, WORD wData );
 void kLoadGDTR( QWORD qwGDTRAddress );
 void kLoadTR( WORD wTSSSegmentOffset );
 void kLoadIDTR( QWORD qwIDTRAddress);
@@ -22,5 +24,6 @@ void kSaveFPUContext( void* pvFPUContext );
 void kLoadFPUContext( void* pvFPUContext );
 void kSetTS( void );
 void kClearTS( void );
-
+WORD kInPortWord(WORD wport);
+void kOutPortWord(WORD wport, WORD wdata);
 #endif /*__ASSEMBLYUTILITY_H__*/

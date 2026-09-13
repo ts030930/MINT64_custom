@@ -14,7 +14,7 @@ void kInitializeDynamicMemory( void )
     BYTE* pbCurrentBitmapPosition;
     int iBlockCountOfLevel, iMetaBlockCount;
 
-    // 동적 메모리 영역으로 사용할 메모리 크기를 이용하여 블록을 관리하는데
+    // 동적 메모리 영역으로 사용할 메모리 +크기를 이용하여 블록을 관리하는데
     // 필요한 메모리 크기를 최소 블록 단위로 계산
     qwDynamicMemorySize = kCalculateDynamicMemorySize();
     iMetaBlockCount = kCalculateMetaBlockCount( qwDynamicMemorySize );
