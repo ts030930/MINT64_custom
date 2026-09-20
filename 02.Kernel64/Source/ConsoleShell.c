@@ -10,6 +10,7 @@
 #include "DynamicMemory.h"
 #include "HardDisk.h"
 #include "FileSystem.h"
+#include "SerialPort.h"
 // 커맨드 테이블 정의
 // 커맨드 테이블 정의
 SHELLCOMMANDENTRY gs_vstCommandTable[] =
@@ -42,13 +43,20 @@ SHELLCOMMANDENTRY gs_vstCommandTable[] =
         { "readsector", "Read HDD Sector, ex)readsector 0(LBA) 10(count)", 
                 kReadSector },
         { "writesector", "Write HDD Sector, ex)writesector 0(LBA) 10(count)", 
-                kWriteSector },{ "mounthdd", "Mount HDD", kMountHDD },
+                kWriteSector },
+        { "mounthdd", "Mount HDD", kMountHDD },
         { "formathdd", "Format HDD", kFormatHDD },
         { "filesysteminfo", "Show File System Information", kShowFileSystemInformation },
         { "createfile", "Create File, ex)createfile a.txt", kCreateFileInRootDirectory },
         { "deletefile", "Delete File, ex)deletefile a.txt", kDeleteFileInRootDirectory },
         { "dir", "Show Directory", kShowRootDirectory },
-};                            
+        { "writefile", "Write Data To File, ex) writefile a.txt", kWriteDataToFile },
+        { "readfile", "Read Data From File, ex) readfile a.txt", kReadDataFromFile },
+        { "testfileio", "Test File I/O Function", kTestFileIO },
+        { "testperformance", "Test File Read/WritePerformance", kTestPerformance },
+        { "flush", "Flush File System Cache", kFlushCache },
+        { "download", "Download Data From Serial, ex) download a.txt", kDownloadFile },
+};                                     
 
 //==============================================================================
 //  실제 셸을 구성하는 코드
@@ -326,7 +334,18 @@ static void kStringToDecimalHexTest( const char* pcParameterBuffer )
  */
 static void kShutdown( const char* pcParamegerBuffer )
 {
-    kPrintf( "System Shutdown Start...\n" );
+     kPrintf( "System Shutdown Start...\n" );
+    
+    // 파일 시스템 캐시에 들어있는 내용을 하드 디스크로 옮김
+    kPrintf( "Cache Flush... ");
+    if( kFlushFileSystemCache() == TRUE )
+    {
+        kPrintf( "Pass\n" );
+    }
+    else
+    {
+        kPrintf( "Fail\n" );
+    }
     
     // 키보드 컨트롤러를 통해 PC를 재시작
     kPrintf( "Press Any Key To Reboot PC..." );
@@ -1449,50 +1468,26 @@ static void kCreateFileInRootDirectory( const char* pcParameterBuffer )
     char vcFileName[ 50 ];
     int iLength;
     DWORD dwCluster;
-    DIRECTORYENTRY stEntry;
     int i;
+    FILE* pstFile;
     
     // 파라미터 리스트를 초기화하여 파일 이름을 추출
     kInitializeParameter( &stList, pcParameterBuffer );
     iLength = kGetNextParameter( &stList, vcFileName );
     vcFileName[ iLength ] = '\0';
-    if( ( iLength > ( sizeof( stEntry.vcFileName ) - 1 ) ) || ( iLength == 0 ) )
+    if( ( iLength > ( FILESYSTEM_MAXFILENAMELENGTH - 1 ) ) || ( iLength == 0 ) )
     {
         kPrintf( "Too Long or Too Short File Name\n" );
         return ;
     }
 
-    // 빈 클러스터를 찾아서 할당된 것으로 설정
-    dwCluster = kFindFreeCluster();
-    if( ( dwCluster == FILESYSTEM_LASTCLUSTER ) ||
-        ( kSetClusterLinkData( dwCluster, FILESYSTEM_LASTCLUSTER ) == FALSE ) )
+    pstFile = fopen( vcFileName, "w" );
+    if( pstFile == NULL )
     {
-        kPrintf( "Cluster Allocation Fail\n" );
-        return ;
+        kPrintf( "File Create Fail\n" );
+        return;
     }
-
-    // 빈 디렉터리 엔트리를 검색
-    i = kFindFreeDirectoryEntry();
-    if( i == -1 )
-    {
-        // 실패할 경우 할당 받은 클러스터를 반환해야 함
-        kSetClusterLinkData( dwCluster, FILESYSTEM_FREECLUSTER );
-        kPrintf( "Directory Entry is Full\n" );
-        return ;
-    }
-    
-    // 디렉터리 엔트리를 설정
-    kMemCpy( stEntry.vcFileName, vcFileName, iLength + 1 );
-    stEntry.dwStartClusterIndex = dwCluster;
-    stEntry.dwFileSize = 0;
-    
-    // 디렉터리 엔트리를 등록
-    if( kSetDirectoryEntryData( i, &stEntry ) == FALSE )
-    {
-        // 실패할 경우 할당 받은 클러스터를 반환해야 함
-        kSetClusterLinkData( dwCluster, FILESYSTEM_FREECLUSTER );
-        kPrintf( "Directory Entry Set Fail\n" );
-    }
+    fclose( pstFile );
     kPrintf( "File Create Success\n" );
 }
 
@@ -1504,40 +1499,20 @@ static void kDeleteFileInRootDirectory( const char* pcParameterBuffer )
     PARAMETERLIST stList;
     char vcFileName[ 50 ];
     int iLength;
-    DIRECTORYENTRY stEntry;
-    int iOffset;
     
     // 파라미터 리스트를 초기화하여 파일 이름을 추출
     kInitializeParameter( &stList, pcParameterBuffer );
     iLength = kGetNextParameter( &stList, vcFileName );
     vcFileName[ iLength ] = '\0';
-    if( ( iLength > ( sizeof( stEntry.vcFileName ) - 1 ) ) || ( iLength == 0 ) )
+    if( ( iLength > ( FILESYSTEM_MAXFILENAMELENGTH - 1 ) ) || ( iLength == 0 ) )
     {
         kPrintf( "Too Long or Too Short File Name\n" );
         return ;
     }
-    
-    // 파일 이름으로 디렉터리 엔트리를 검색
-    iOffset = kFindDirectoryEntry( vcFileName, &stEntry );
-    if( iOffset == -1 )
-    {
-        kPrintf( "File Not Found\n" );
-        return ;
-    }
 
-    // 클러스터를 반환
-    if( kSetClusterLinkData( stEntry.dwStartClusterIndex, FILESYSTEM_FREECLUSTER )
-            == FALSE )
+    if( remove( vcFileName ) != 0 )
     {
-        kPrintf( "Cluster Free Fail\n" );
-        return ;
-    }
-    
-    // 디렉터리 엔트리를 모두 초기화하여 빈 것으로 설정한 뒤, 해당 오프셋에 덮어씀
-    kMemSet( &stEntry, 0, sizeof( stEntry ) );
-    if( kSetDirectoryEntryData( iOffset, &stEntry ) == FALSE )
-    {
-        kPrintf( "Root Directory Update Fail\n" );
+        kPrintf( "File Not Found or File Opened\n" );
         return ;
     }
     
@@ -1549,57 +1524,83 @@ static void kDeleteFileInRootDirectory( const char* pcParameterBuffer )
  */
 static void kShowRootDirectory( const char* pcParameterBuffer )
 {
-    BYTE* pbClusterBuffer;
+    DIR* pstDirectory;
     int i, iCount, iTotalCount;
-    DIRECTORYENTRY* pstEntry;
+    struct dirent* pstEntry;
     char vcBuffer[ 400 ];
     char vcTempValue[ 50 ];
     DWORD dwTotalByte;
+    DWORD dwUsedClusterCount;
+    FILESYSTEMMANAGER stManager;
     
-    pbClusterBuffer = kAllocateMemory( FILESYSTEM_SECTORSPERCLUSTER * 512 );
-
-    // 루트 디렉터리를 읽음
-    if( kReadCluster( 0, pbClusterBuffer ) == FALSE )
+    // 파일 시스템 정보를 얻음
+    kGetFileSystemInformation( &stManager );
+     
+    // 루트 디렉터리를 엶
+    pstDirectory = opendir( "/" );
+    if( pstDirectory == NULL )
     {
-        kPrintf( "Root Directory Read Fail\n" );
+        kPrintf( "Root Directory Open Fail\n" );
         return ;
     }
-
+    
     // 먼저 루프를 돌면서 디렉터리에 있는 파일의 개수와 전체 파일이 사용한 크기를 계산
-    pstEntry = ( DIRECTORYENTRY* ) pbClusterBuffer;
     iTotalCount = 0;
     dwTotalByte = 0;
-    for( i = 0 ; i < FILESYSTEM_MAXDIRECTORYENTRYCOUNT ; i++ )
+    dwUsedClusterCount = 0;
+    while( 1 )
     {
-        if( pstEntry[ i ].dwStartClusterIndex == 0 )
+        // 디렉터리에서 엔트리 하나를 읽음
+        pstEntry = readdir( pstDirectory );
+        // 더이상 파일이 없으면 나감
+        if( pstEntry == NULL )
         {
-            continue;
+            break;
         }
         iTotalCount++;
-        dwTotalByte += pstEntry[ i ].dwFileSize;
+        dwTotalByte += pstEntry->dwFileSize;
+
+        // 실제로 사용된 클러스터의 개수를 계산
+        if( pstEntry->dwFileSize == 0 )
+        {
+            // 크기가 0이라도 클러스터 1개는 할당되어 있음
+            dwUsedClusterCount++;
+        }
+        else
+        {
+            // 클러스터 개수를 올림하여 더함
+            dwUsedClusterCount += ( pstEntry->dwFileSize + 
+                ( FILESYSTEM_CLUSTERSIZE - 1 ) ) / FILESYSTEM_CLUSTERSIZE;
+        }
     }
     
     // 실제 파일의 내용을 표시하는 루프
-    pstEntry = ( DIRECTORYENTRY* ) pbClusterBuffer;
+    rewinddir( pstDirectory );
     iCount = 0;
-    for( i = 0 ; i < FILESYSTEM_MAXDIRECTORYENTRYCOUNT ; i++ )
+    while( 1 )
     {
-        if( pstEntry[ i ].dwStartClusterIndex == 0 )
+        // 디렉터리에서 엔트리 하나를 읽음
+        pstEntry = readdir( pstDirectory );
+        // 더이상 파일이 없으면 나감
+        if( pstEntry == NULL )
         {
-            continue;
+            break;
         }
+        
         // 전부 공백으로 초기화 한 후 각 위치에 값을 대입
         kMemSet( vcBuffer, ' ', sizeof( vcBuffer ) - 1 );
         vcBuffer[ sizeof( vcBuffer ) - 1 ] = '\0';
         
         // 파일 이름 삽입
-        kMemCpy( vcBuffer, pstEntry[ i ].vcFileName, 
-                 kStrLen( pstEntry[ i ].vcFileName ) );
+        kMemCpy( vcBuffer, pstEntry->d_name, 
+                 kStrLen( pstEntry->d_name ) );
+
         // 파일 길이 삽입
-        kSPrintf( vcTempValue, "%d Byte", pstEntry[ i ].dwFileSize );
+        kSPrintf( vcTempValue, "%d Byte", pstEntry->dwFileSize );
         kMemCpy( vcBuffer + 30, vcTempValue, kStrLen( vcTempValue ) );
+
         // 파일의 시작 클러스터 삽입
-        kSPrintf( vcTempValue, "0x%X Cluster", pstEntry[ i ].dwStartClusterIndex );
+        kSPrintf( vcTempValue, "0x%X Cluster", pstEntry->dwStartClusterIndex );
         kMemCpy( vcBuffer + 55, vcTempValue, kStrLen( vcTempValue ) + 1 );
         kPrintf( "    %s\n", vcBuffer );
 
@@ -1616,8 +1617,743 @@ static void kShowRootDirectory( const char* pcParameterBuffer )
     }
     
     // 총 파일의 개수와 파일의 총 크기를 출력
-    kPrintf( "\t Total File Count: %d\t Total File Size: %d Byte\n", iTotalCount, 
-            dwTotalByte );
+    kPrintf( "\t\tTotal File Count: %d\n", iTotalCount );
+    kPrintf( "\t\tTotal File Size: %d KByte (%d Cluster)\n", dwTotalByte, 
+             dwUsedClusterCount );
     
-    kFreeMemory( pbClusterBuffer );
+    // 남은 클러스터 수를 이용해서 여유 공간을 출력
+    kPrintf( "\t\tFree Space: %d KByte (%d Cluster)\n", 
+             ( stManager.dwTotalClusterCount - dwUsedClusterCount ) * 
+             FILESYSTEM_CLUSTERSIZE / 1024, stManager.dwTotalClusterCount - 
+             dwUsedClusterCount );
+    
+    // 디렉터리를 닫음
+    closedir( pstDirectory );
+}
+
+/**
+ *  파일을 생성하여 키보드로 입력된 데이터를 씀
+ */
+static void kWriteDataToFile( const char* pcParameterBuffer )
+{
+    PARAMETERLIST stList;
+    char vcFileName[ 50 ];
+    int iLength;
+    FILE* fp;
+    int iEnterCount;
+    BYTE bKey;
+    
+    // 파라미터 리스트를 초기화하여 파일 이름을 추출
+    kInitializeParameter( &stList, pcParameterBuffer );
+    iLength = kGetNextParameter( &stList, vcFileName );
+    vcFileName[ iLength ] = '\0';
+    if( ( iLength > ( FILESYSTEM_MAXFILENAMELENGTH - 1 ) ) || ( iLength == 0 ) )
+    {
+        kPrintf( "Too Long or Too Short File Name\n" );
+        return ;
+    }
+    
+    // 파일 생성
+    fp = fopen( vcFileName, "w" );
+    if( fp == NULL )
+    {
+        kPrintf( "%s File Open Fail\n", vcFileName );
+        return ;
+    }
+    
+    // 엔터 키가 연속으로 3번 눌러질 때까지 내용을 파일에 씀
+    iEnterCount = 0;
+    while( 1 )
+    {
+        bKey = kGetCh();
+        // 엔터 키이면 연속 3번 눌러졌는가 확인하여 루프를 빠져 나감
+        if( bKey == KEY_ENTER )
+        {
+            iEnterCount++;
+            if( iEnterCount >= 3 )
+            {
+                break;
+            }
+        }
+        // 엔터 키가 아니라면 엔터 키 입력 횟수를 초기화
+        else
+        {
+            iEnterCount = 0;
+        }
+        
+        kPrintf( "%c", bKey );
+        if( fwrite( &bKey, 1, 1, fp ) != 1 )
+        {
+            kPrintf( "File Wirte Fail\n" );
+            break;
+        }
+    }
+    
+    kPrintf( "File Create Success\n" );
+    fclose( fp );
+}
+
+/**
+ *  파일을 열어서 데이터를 읽음
+ */
+static void kReadDataFromFile( const char* pcParameterBuffer )
+{
+    PARAMETERLIST stList;
+    char vcFileName[ 50 ];
+    int iLength;
+    FILE* fp;
+    int iEnterCount;
+    BYTE bKey;
+    
+    // 파라미터 리스트를 초기화하여 파일 이름을 추출
+    kInitializeParameter( &stList, pcParameterBuffer );
+    iLength = kGetNextParameter( &stList, vcFileName );
+    vcFileName[ iLength ] = '\0';
+    if( ( iLength > ( FILESYSTEM_MAXFILENAMELENGTH - 1 ) ) || ( iLength == 0 ) )
+    {
+        kPrintf( "Too Long or Too Short File Name\n" );
+        return ;
+    }
+    
+    // 파일 생성
+    fp = fopen( vcFileName, "r" );
+    if( fp == NULL )
+    {
+        kPrintf( "%s File Open Fail\n", vcFileName );
+        return ;
+    }
+    
+    // 파일의 끝까지 출력하는 것을 반복
+    iEnterCount = 0;
+    while( 1 )
+    {
+        if( fread( &bKey, 1, 1, fp ) != 1 )
+        {
+            break;
+        }
+        kPrintf( "%c", bKey );
+        
+        // 만약 엔터 키이면 엔터 키 횟수를 증가시키고 20라인까지 출력했다면 
+        // 더 출력할지 여부를 물어봄
+        if( bKey == KEY_ENTER )
+        {
+            iEnterCount++;
+            
+            if( ( iEnterCount != 0 ) && ( ( iEnterCount % 20 ) == 0 ) )
+            {
+                kPrintf( "Press any key to continue... ('q' is exit) : " );
+                if( kGetCh() == 'q' )
+                {
+                    kPrintf( "\n" );
+                    break;
+                }
+                kPrintf( "\n" );
+                iEnterCount = 0;
+            }
+        }
+    }
+    fclose( fp );
+}
+
+/**
+ *  파일 I/O에 관련된 기능을 테스트
+ */
+static void kTestFileIO( const char* pcParameterBuffer )
+{
+    FILE* pstFile;
+    BYTE* pbBuffer;
+    int i;
+    int j;
+    DWORD dwRandomOffset;
+    DWORD dwByteCount;
+    BYTE vbTempBuffer[ 1024 ];
+    DWORD dwMaxFileSize;
+    
+    kPrintf( "================== File I/O Function Test ==================\n" );
+    
+    // 4Mbyte의 버퍼 할당
+    dwMaxFileSize = 4 * 1024 * 1024;
+    pbBuffer = kAllocateMemory( dwMaxFileSize );
+    if( pbBuffer == NULL )
+    {
+        kPrintf( "Memory Allocation Fail\n" );
+        return ;
+    }
+    // 테스트용 파일을 삭제
+    remove( "testfileio.bin" );
+
+    //==========================================================================
+    // 파일 열기 테스트
+    //==========================================================================
+    kPrintf( "1. File Open Fail Test..." );
+    // r 옵션은 파일을 생성하지 않으므로, 테스트 파일이 없는 경우 NULL이 되어야 함
+    pstFile = fopen( "testfileio.bin", "r" );
+    if( pstFile == NULL )
+    {
+        kPrintf( "[Pass]\n" );
+    }
+    else
+    {
+        kPrintf( "[Fail]\n" );
+        fclose( pstFile );
+    }
+    
+    //==========================================================================
+    // 파일 생성 테스트
+    //==========================================================================
+    kPrintf( "2. File Create Test..." );
+    // w 옵션은 파일을 생성하므로, 정상적으로 핸들이 반환되어야함
+    pstFile = fopen( "testfileio.bin", "w" );
+    if( pstFile != NULL )
+    {
+        kPrintf( "[Pass]\n" );
+        kPrintf( "    File Handle [0x%Q]\n", pstFile );
+    }
+    else
+    {
+        kPrintf( "[Fail]\n" );
+    }
+    
+    //==========================================================================
+    // 순차적인 영역 쓰기 테스트
+    //==========================================================================
+    kPrintf( "3. Sequential Write Test(Cluster Size)..." );
+    // 열린 핸들을 가지고 쓰기 수행
+    for( i = 0 ; i < 100 ; i++ )
+    {
+        kMemSet( pbBuffer, i, FILESYSTEM_CLUSTERSIZE );
+        if( fwrite( pbBuffer, 1, FILESYSTEM_CLUSTERSIZE, pstFile ) !=
+            FILESYSTEM_CLUSTERSIZE )
+        {
+            kPrintf( "[Fail]\n" );
+            kPrintf( "    %d Cluster Error\n", i );
+            break;
+        }
+    }
+    if( i >= 100 )
+    {
+        kPrintf( "[Pass]\n" );
+    }
+    
+    //==========================================================================
+    // 순차적인 영역 읽기 테스트
+    //==========================================================================
+    kPrintf( "4. Sequential Read And Verify Test(Cluster Size)..." );
+    // 파일의 처음으로 이동
+    fseek( pstFile, -100 * FILESYSTEM_CLUSTERSIZE, SEEK_END );
+    
+    // 열린 핸들을 가지고 읽기 수행 후, 데이터 검증
+    for( i = 0 ; i < 100 ; i++ )
+    {
+        // 파일을 읽음
+        if( fread( pbBuffer, 1, FILESYSTEM_CLUSTERSIZE, pstFile ) !=
+            FILESYSTEM_CLUSTERSIZE )
+        {
+            kPrintf( "[Fail]\n" );
+            return ;
+        }
+        
+        // 데이터 검사
+        for( j = 0 ; j < FILESYSTEM_CLUSTERSIZE ; j++ )
+        {
+            if( pbBuffer[ j ] != ( BYTE ) i )
+            {
+                kPrintf( "[Fail]\n" );
+                kPrintf( "    %d Cluster Error. [%X] != [%X]\n", i, pbBuffer[ j ], 
+                         ( BYTE ) i );
+                break;
+            }
+        }
+    }
+    if( i >= 100 )
+    {
+        kPrintf( "[Pass]\n" );
+    }
+
+    //==========================================================================
+    // 임의의 영역 쓰기 테스트
+    //==========================================================================
+    kPrintf( "5. Random Write Test...\n" );
+    
+    // 버퍼를 모두 0으로 채움
+    kMemSet( pbBuffer, 0, dwMaxFileSize );
+    // 여기 저기에 옮겨다니면서 데이터를 쓰고 검증
+    // 파일의 내용을 읽어서 버퍼로 복사
+    fseek( pstFile, -100 * FILESYSTEM_CLUSTERSIZE, SEEK_CUR );
+    fread( pbBuffer, 1, dwMaxFileSize, pstFile );
+    
+    // 임의의 위치로 옮기면서 데이터를 파일과 버퍼에 동시에 씀
+    for( i = 0 ; i < 100 ; i++ )
+    {
+        dwByteCount = ( kRandom() % ( sizeof( vbTempBuffer ) - 1 ) ) + 1;
+        dwRandomOffset = kRandom() % ( dwMaxFileSize - dwByteCount );
+        
+        kPrintf( "    [%d] Offset [%d] Byte [%d]...", i, dwRandomOffset, 
+                dwByteCount );
+
+        // 파일 포인터를 이동
+        fseek( pstFile, dwRandomOffset, SEEK_SET );
+        kMemSet( vbTempBuffer, i, dwByteCount );
+              
+        // 데이터를 씀
+        if( fwrite( vbTempBuffer, 1, dwByteCount, pstFile ) != dwByteCount )
+        {
+            kPrintf( "[Fail]\n" );
+            break;
+        }
+        else
+        {
+            kPrintf( "[Pass]\n" );
+        }
+        
+        kMemSet( pbBuffer + dwRandomOffset, i, dwByteCount );
+    }
+    
+    // 맨 마지막으로 이동하여 1바이트를 써서 파일의 크기를 4Mbyte로 만듦
+    fseek( pstFile, dwMaxFileSize - 1, SEEK_SET );
+    fwrite( &i, 1, 1, pstFile );
+    pbBuffer[ dwMaxFileSize - 1 ] = ( BYTE ) i;
+
+    //==========================================================================
+    // 임의의 영역 읽기 테스트
+    //==========================================================================
+    kPrintf( "6. Random Read And Verify Test...\n" );
+    // 임의의 위치로 옮기면서 파일에서 데이터를 읽어 버퍼의 내용과 비교
+    for( i = 0 ; i < 100 ; i++ )
+    {
+        dwByteCount = ( kRandom() % ( sizeof( vbTempBuffer ) - 1 ) ) + 1;
+        dwRandomOffset = kRandom() % ( ( dwMaxFileSize ) - dwByteCount );
+
+        kPrintf( "    [%d] Offset [%d] Byte [%d]...", i, dwRandomOffset, 
+                dwByteCount );
+        
+        // 파일 포인터를 이동
+        fseek( pstFile, dwRandomOffset, SEEK_SET );
+        
+        // 데이터 읽음
+        if( fread( vbTempBuffer, 1, dwByteCount, pstFile ) != dwByteCount )
+        {
+            kPrintf( "[Fail]\n" );
+            kPrintf( "    Read Fail\n", dwRandomOffset ); 
+            break;
+        }
+        
+        // 버퍼와 비교
+        if( kMemCmp( pbBuffer + dwRandomOffset, vbTempBuffer, dwByteCount ) 
+                != 0 )
+        {
+            kPrintf( "[Fail]\n" );
+            kPrintf( "    Compare Fail\n", dwRandomOffset ); 
+            break;
+        }
+        
+        kPrintf( "[Pass]\n" );
+    }
+    
+    //==========================================================================
+    // 다시 순차적인 영역 읽기 테스트
+    //==========================================================================
+    kPrintf( "7. Sequential Write, Read And Verify Test(1024 Byte)...\n" );
+    // 파일의 처음으로 이동
+    fseek( pstFile, -dwMaxFileSize, SEEK_CUR );
+    
+    // 열린 핸들을 가지고 쓰기 수행. 앞부분에서 2Mbyte만 씀
+    for( i = 0 ; i < ( 2 * 1024 * 1024 / 1024 ) ; i++ )
+    {
+        kPrintf( "    [%d] Offset [%d] Byte [%d] Write...", i, i * 1024, 1024 );
+
+        // 1024 바이트씩 파일을 씀
+        if( fwrite( pbBuffer + ( i * 1024 ), 1, 1024, pstFile ) != 1024 )
+        {
+            kPrintf( "[Fail]\n" );
+            return ;
+        }
+        else
+        {
+            kPrintf( "[Pass]\n" );
+        }
+    }
+
+    // 파일의 처음으로 이동
+    fseek( pstFile, -dwMaxFileSize, SEEK_SET );
+    
+    // 열린 핸들을 가지고 읽기 수행 후 데이터 검증. Random Write로 데이터가 잘못 
+    // 저장될 수 있으므로 검증은 4Mbyte 전체를 대상으로 함
+    for( i = 0 ; i < ( dwMaxFileSize / 1024 )  ; i++ )
+    {
+        // 데이터 검사
+        kPrintf( "    [%d] Offset [%d] Byte [%d] Read And Verify...", i, 
+                i * 1024, 1024 );
+        
+        // 1024 바이트씩 파일을 읽음
+        if( fread( vbTempBuffer, 1, 1024, pstFile ) != 1024 )
+        {
+            kPrintf( "[Fail]\n" );
+            return ;
+        }
+        
+        if( kMemCmp( pbBuffer + ( i * 1024 ), vbTempBuffer, 1024 ) != 0 )
+        {
+            kPrintf( "[Fail]\n" );
+            break;
+        }
+        else
+        {
+            kPrintf( "[Pass]\n" );
+        }
+    }
+        
+    //==========================================================================
+    // 파일 삭제 실패 테스트
+    //==========================================================================
+    kPrintf( "8. File Delete Fail Test..." );
+    // 파일이 열려있는 상태이므로 파일을 지우려고 하면 실패해야 함
+    if( remove( "testfileio.bin" ) != 0 )
+    {
+        kPrintf( "[Pass]\n" );
+    }
+    else
+    {
+        kPrintf( "[Fail]\n" );
+    }
+    
+    //==========================================================================
+    // 파일 닫기 테스트
+    //==========================================================================
+    kPrintf( "9. File Close Test..." );
+    // 파일이 정상적으로 닫혀야 함
+    if( fclose( pstFile ) == 0 )
+    {
+        kPrintf( "[Pass]\n" );
+    }
+    else
+    {
+        kPrintf( "[Fail]\n" );
+    }
+
+    //==========================================================================
+    // 파일 삭제 테스트
+    //==========================================================================
+    kPrintf( "10. File Delete Test..." );
+    // 파일이 닫혔으므로 정상적으로 지워져야 함 
+    if( remove( "testfileio.bin" ) == 0 )
+    {
+        kPrintf( "[Pass]\n" );
+    }
+    else
+    {
+        kPrintf( "[Fail]\n" );
+    }
+    
+    // 메모리를 해제
+    kFreeMemory( pbBuffer );    
+}
+/**
+ *  파일을 읽고 쓰는 속도를 측정
+ */
+static void kTestPerformance( const char* pcParameterBuffer )
+{
+    FILE* pstFile;
+    DWORD dwClusterTestFileSize;
+    DWORD dwOneByteTestFileSize;
+    QWORD qwLastTickCount;
+    DWORD i;
+    BYTE* pbBuffer;
+    
+    // 클러스터는 1Mbyte까지 파일을 테스트
+    dwClusterTestFileSize = 1024 * 1024;
+    // 1바이트씩 읽고 쓰는 테스트는 시간이 많이 걸리므로 16Kbyte만 테스트
+    dwOneByteTestFileSize = 16 * 1024;
+    
+    // 테스트용 버퍼 메모리 할당
+    pbBuffer = kAllocateMemory( dwClusterTestFileSize );
+    if( pbBuffer == NULL )
+    {
+        kPrintf( "Memory Allocate Fail\n" );
+        return ;
+    }
+    
+    // 버퍼를 초기화
+    kMemSet( pbBuffer, 0, FILESYSTEM_CLUSTERSIZE );
+    
+    kPrintf( "================== File I/O Performance Test ==================\n" );
+
+    //==========================================================================
+    // 클러스터 단위로 파일을 순차적으로 쓰는 테스트
+    //==========================================================================
+    kPrintf( "1.Sequential Read/Write Test(Cluster Size)\n" );
+
+    // 기존의 테스트 파일을 제거하고 새로 만듦
+    remove( "performance.txt" );
+    pstFile = fopen( "performance.txt", "w" );
+    if( pstFile == NULL )
+    {
+        kPrintf( "File Open Fail\n" );
+        kFreeMemory( pbBuffer );
+        return ;
+    }
+    
+    qwLastTickCount = kGetTickCount();
+    // 클러스터 단위로 쓰는 테스트
+    for( i = 0 ; i < ( dwClusterTestFileSize / FILESYSTEM_CLUSTERSIZE ) ; i++ )
+    {
+        if( fwrite( pbBuffer, 1, FILESYSTEM_CLUSTERSIZE, pstFile ) != 
+            FILESYSTEM_CLUSTERSIZE )
+        {
+            kPrintf( "Write Fail\n" );
+            // 파일을 닫고 메모리를 해제함
+            fclose( pstFile );
+            kFreeMemory( pbBuffer );
+            return ;
+        }
+    }
+    // 시간 출력
+    kPrintf( "   Sequential Write(Cluster Size): %d ms\n", kGetTickCount() - 
+             qwLastTickCount );
+
+    //==========================================================================
+    // 클러스터 단위로 파일을 순차적으로 읽는 테스트
+    //==========================================================================
+    // 파일의 처음으로 이동
+    fseek( pstFile, 0, SEEK_SET );
+    
+    qwLastTickCount = kGetTickCount();
+    // 클러스터 단위로 읽는 테스트
+    for( i = 0 ; i < ( dwClusterTestFileSize / FILESYSTEM_CLUSTERSIZE ) ; i++ )
+    {
+        if( fread( pbBuffer, 1, FILESYSTEM_CLUSTERSIZE, pstFile ) != 
+            FILESYSTEM_CLUSTERSIZE )
+        {
+            kPrintf( "Read Fail\n" );
+            // 파일을 닫고 메모리를 해제함
+            fclose( pstFile );
+            kFreeMemory( pbBuffer );
+            return ;
+        }
+    }
+    // 시간 출력
+    kPrintf( "   Sequential Read(Cluster Size): %d ms\n", kGetTickCount() - 
+             qwLastTickCount );
+    
+    //==========================================================================
+    // 1 바이트 단위로 파일을 순차적으로 쓰는 테스트
+    //==========================================================================
+    kPrintf( "2.Sequential Read/Write Test(1 Byte)\n" );
+    
+    // 기존의 테스트 파일을 제거하고 새로 만듦
+    remove( "performance.txt" );
+    pstFile = fopen( "performance.txt", "w" );
+    if( pstFile == NULL )
+    {
+        kPrintf( "File Open Fail\n" );
+        kFreeMemory( pbBuffer );
+        return ;
+    }
+    
+    qwLastTickCount = kGetTickCount();
+    // 1 바이트 단위로 쓰는 테스트
+    for( i = 0 ; i < dwOneByteTestFileSize ; i++ )
+    {
+        if( fwrite( pbBuffer, 1, 1, pstFile ) != 1 )
+        {
+            kPrintf( "Write Fail\n" );
+            // 파일을 닫고 메모리를 해제함
+            fclose( pstFile );
+            kFreeMemory( pbBuffer );
+            return ;
+        }
+    }
+    // 시간 출력
+    kPrintf( "   Sequential Write(1 Byte): %d ms\n", kGetTickCount() - 
+             qwLastTickCount );
+
+    //==========================================================================
+    // 1 바이트 단위로 파일을 순차적으로 읽는 테스트
+    //==========================================================================
+    // 파일의 처음으로 이동
+    fseek( pstFile, 0, SEEK_SET );
+    
+    qwLastTickCount = kGetTickCount();
+    // 1 바이트 단위로 읽는 테스트
+    for( i = 0 ; i < dwOneByteTestFileSize ; i++ )
+    {
+        if( fread( pbBuffer, 1, 1, pstFile ) != 1 )
+        {
+            kPrintf( "Read Fail\n" );
+            // 파일을 닫고 메모리를 해제함
+            fclose( pstFile );
+            kFreeMemory( pbBuffer );
+            return ;
+        }
+    }
+    // 시간 출력
+    kPrintf( "   Sequential Read(1 Byte): %d ms\n", kGetTickCount() - 
+             qwLastTickCount );
+    
+    // 파일을 닫고 메모리를 해제함
+    fclose( pstFile );
+    kFreeMemory( pbBuffer );
+}
+
+/**
+ *  파일 시스템의 캐시 버퍼에 있는 데이터를 모두 하드 디스크에 씀 
+ */
+static void kFlushCache( const char* pcParameterBuffer )
+{
+    QWORD qwTickCount;
+    
+    qwTickCount = kGetTickCount();
+    kPrintf( "Cache Flush... ");
+    if( kFlushFileSystemCache() == TRUE )
+    {
+        kPrintf( "Pass\n" );
+    }
+    else
+    {
+        kPrintf( "Fail\n" );
+    }
+    kPrintf( "Total Time = %d ms\n", kGetTickCount() - qwTickCount );
+}
+/**
+ *  시리얼 포트로부터 데이터를 수신하여 파일로 저장
+ */
+static void kDownloadFile( const char* pcParameterBuffer )
+{
+    PARAMETERLIST stList;
+    char vcFileName[ 50 ];
+    int iFileNameLength;
+    DWORD dwDataLength;
+    FILE* fp;
+    DWORD dwReceivedSize;
+    DWORD dwTempSize;
+    BYTE vbDataBuffer[ SERIAL_FIFOMAXSIZE ];
+    QWORD qwLastReceivedTickCount;
+    
+    // 파라미터 리스트를 초기화하여 파일 이름을 추출
+    kInitializeParameter( &stList, pcParameterBuffer );
+    iFileNameLength = kGetNextParameter( &stList, vcFileName );
+    vcFileName[ iFileNameLength ] = '\0';
+    if( ( iFileNameLength > ( FILESYSTEM_MAXFILENAMELENGTH - 1 ) ) || 
+        ( iFileNameLength == 0 ) )
+    {
+        kPrintf( "Too Long or Too Short File Name\n" );
+        kPrintf( "ex)download a.txt\n" );
+        return ;
+    }
+    
+    // 시리얼 포트의 FIFO를 모두 비움
+    kClearSerialFIFO();
+    
+    //==========================================================================
+    // 데이터 길이가 수신될 때까지 기다린다는 메시지를 출력하고, 4 바이트를 수신한 뒤
+    // Ack를 전송
+    //==========================================================================
+    kPrintf( "Waiting For Data Length....." );
+    dwReceivedSize = 0;
+    qwLastReceivedTickCount = kGetTickCount();
+    while( dwReceivedSize < 4 )
+    {
+        // 남은 수만큼 데이터 수신
+        dwTempSize = kReceiveSerialData( ( ( BYTE* ) &dwDataLength ) +
+            dwReceivedSize, 4 - dwReceivedSize );
+        dwReceivedSize += dwTempSize;
+        
+        // 수신된 데이터가 없다면 잠시 대기
+        if( dwTempSize == 0 )
+        {
+            kSleep( 0 );
+            
+            // 대기한 시간이 30초 이상이라면 Time Out으로 중지
+            if( ( kGetTickCount() - qwLastReceivedTickCount ) > 30000 )
+            {
+                kPrintf( "Time Out Occur~!!\n" );
+                return ;
+            }
+        }
+        else
+        {
+            // 마지막으로 데이터를 수신한 시간을 갱신
+            qwLastReceivedTickCount = kGetTickCount();
+        }
+    }
+    kPrintf( "[%d] Byte\n", dwDataLength );
+
+    // 정상적으로 데이터 길이를 수신했으므로, Ack를 송신
+    kSendSerialData( "A", 1 );
+
+    //==========================================================================
+    // 파일을 생성하고 시리얼로부터 데이터를 수신하여 파일에 저장
+    //==========================================================================
+    // 파일 생성
+    fp = fopen( vcFileName, "w" );
+    if( fp == NULL )
+    {
+        kPrintf( "%s File Open Fail\n", vcFileName );
+        return ;
+    }
+    
+    // 데이터 수신
+    kPrintf( "Data Receive Start: " );
+    dwReceivedSize = 0;
+    qwLastReceivedTickCount = kGetTickCount();
+    while( dwReceivedSize < dwDataLength )
+    {
+        // 버퍼에 담아서 데이터를 씀
+        dwTempSize = kReceiveSerialData( vbDataBuffer, SERIAL_FIFOMAXSIZE );
+        dwReceivedSize += dwTempSize;
+
+        // 이번에 데이터가 수신된 것이 있다면 ACK 또는 파일 쓰기 수행
+        if( dwTempSize != 0 ) 
+        {
+            // 수신하는 쪽은 데이터의 마지막까지 수신했거나 FIFO의 크기인 
+            // 16 바이트마다 한번씩 Ack를 전송
+            if( ( ( dwReceivedSize % SERIAL_FIFOMAXSIZE ) == 0 ) ||
+                ( ( dwReceivedSize == dwDataLength ) ) )
+            {
+                kSendSerialData( "A", 1 );
+                kPrintf( "#" );
+            }
+            
+            // 쓰기 중에 문제가 생기면 바로 종료
+            if( fwrite( vbDataBuffer, 1, dwTempSize, fp ) != dwTempSize )
+            {
+                kPrintf( "File Write Error Occur\n" );
+                break;
+            }
+            
+            // 마지막으로 데이터를 수신한 시간을 갱신
+            qwLastReceivedTickCount = kGetTickCount();
+        }
+        // 이번에 수신된 데이터가 없다면 잠시 대기
+        else
+        {
+            kSleep( 0 );
+            
+            // 대기한 시간이 10초 이상이라면 Time Out으로 중지
+            if( ( kGetTickCount() - qwLastReceivedTickCount ) > 10000 )
+            {
+                kPrintf( "Time Out Occur~!!\n" );
+                break;
+            }
+        }
+    }   
+
+    //==========================================================================
+    // 전체 데이터의 크기와 실제로 수신 받은 데이터의 크기를 비교하여 성공 여부를
+    // 출력한 뒤, 파일을 닫고 파일 시스템 캐시를 모두 비움
+    //==========================================================================
+    // 수신된 길이를 비교해서 문제가 발생했는지를 표시
+    if( dwReceivedSize != dwDataLength )
+    {
+        kPrintf( "\nError Occur. Total Size [%d] Received Size [%d]\n", 
+                 dwReceivedSize, dwDataLength );
+    }
+    else
+    {
+        kPrintf( "\nReceive Complete. Total Size [%d] Byte\n", dwReceivedSize );
+    }
+    
+    // 파일을 닫고 파일 시스템 캐시를 내보냄
+    fclose( fp );
+    kFlushFileSystemCache();
 }

@@ -62,4 +62,4 @@ clean:
 	make -C 04.Utility clean
 	rm -f Disk.img
 run :
-	qemu-system-x86_64 -m 64 -drive file=Disk.img,format=raw,if=floppy -hda HDD.img -boot a -rtc base=localtime -M pc
+	qemu-system-x86_64 -L . -m 64 -fda ./Disk.img -boot a -rtc base=localtime -M pc -serial tcp::4444,server,nowait -display curses

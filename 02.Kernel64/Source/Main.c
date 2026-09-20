@@ -11,6 +11,9 @@
 #include "Synchronization.h"
 #include "DynamicMemory.h"
 #include "HardDisk.h"
+#include "FileSystem.h"
+#include "SerialPort.h"
+
 // 함수 선언
 void kPrintString (int iX, int iY, const char* pcString);
 
@@ -84,19 +87,6 @@ void Main( void )
     kSetCursor( 45, iCursorY++ );
     kPrintf( "Pass\n" );
     
-    // 하드 디스크를 초기화
-    kPrintf( "HDD Initialize..............................[    ]" );
-    if( kInitializeHDD() == TRUE )
-    {
-        kSetCursor( 45, iCursorY++ );
-        kPrintf( "Pass\n" );
-    }
-    else
-    {
-        kSetCursor( 45, iCursorY++ );
-        kPrintf( "Fail\n" );
-    }
-    
     // 파일 시스템을 초기화
     kPrintf( "File System Initialize......................[    ]" );
     if( kInitializeFileSystem() == TRUE )
@@ -109,7 +99,11 @@ void Main( void )
         kSetCursor( 45, iCursorY++ );
         kPrintf( "Fail\n" );
     }
-    
+    // 시리얼 포트를 초기화    
+    kPrintf( "Serial Port Initialize......................[Pass]\n" );
+    iCursorY++;
+    kInitializeSerialPort();
+
     // 유휴 태스크를 시스템 스레드로 생성하고 셸을 시작
     kCreateTask( TASK_FLAGS_LOWEST | TASK_FLAGS_THREAD | TASK_FLAGS_SYSTEM | TASK_FLAGS_IDLE, 0, 0, 
             ( QWORD ) kIdleTask );
