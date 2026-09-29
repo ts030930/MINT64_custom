@@ -24,6 +24,6 @@ void kSaveFPUContext( void* pvFPUContext );
 void kLoadFPUContext( void* pvFPUContext );
 void kSetTS( void );
 void kClearTS( void );
-WORD kInPortWord(WORD wport);
-void kOutPortWord(WORD wport, WORD wdata);
+void kEnableGlobalLocalAPIC( void );
+
 #endif /*__ASSEMBLYUTILITY_H__*/

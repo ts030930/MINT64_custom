@@ -1,17 +1,31 @@
+/**
+ *  file    ConsoleShell.c
+ *  date    2009/01/31
+ *  author  kkamagui 
+ *          Copyright(c)2008 All rights reserved by kkamagui
+ *  brief   콘솔 셸에 관련된 소스 파일
+ */
+
 #include "ConsoleShell.h"
 #include "Console.h"
 #include "Keyboard.h"
+#include "Utility.h"
 #include "PIT.h"
 #include "RTC.h"
 #include "AssemblyUtility.h"
 #include "Task.h"
 #include "Synchronization.h"
-#include "Utility.h"
 #include "DynamicMemory.h"
 #include "HardDisk.h"
 #include "FileSystem.h"
 #include "SerialPort.h"
-// 커맨드 테이블 정의
+#include "MPConfigurationTable.h"
+#include "LocalAPIC.h"
+#include "MultiProcessor.h"
+#include "IOAPIC.h"
+#include "PIC.h"
+
+
 // 커맨드 테이블 정의
 SHELLCOMMANDENTRY gs_vstCommandTable[] =
 {
@@ -56,6 +70,10 @@ SHELLCOMMANDENTRY gs_vstCommandTable[] =
         { "testperformance", "Test File Read/WritePerformance", kTestPerformance },
         { "flush", "Flush File System Cache", kFlushCache },
         { "download", "Download Data From Serial, ex) download a.txt", kDownloadFile },
+        { "showmpinfo", "Show MP Configuration Table Information", kShowMPConfigurationTable },
+        { "startap", "Start Application Processor", kStartApplicationProcessor },
+        { "startsymmetricio", "Start Symmetric I/O Mode", kStartSymmetricIOMode },
+        { "showirqintinmap", "Show IRQ->INITIN Mapping Table", kShowIRQINTINMappingTable },
 };                                     
 
 //==============================================================================
@@ -334,7 +352,7 @@ static void kStringToDecimalHexTest( const char* pcParameterBuffer )
  */
 static void kShutdown( const char* pcParamegerBuffer )
 {
-     kPrintf( "System Shutdown Start...\n" );
+    kPrintf( "System Shutdown Start...\n" );
     
     // 파일 시스템 캐시에 들어있는 내용을 하드 디스크로 옮김
     kPrintf( "Cache Flush... ");
@@ -2048,6 +2066,7 @@ static void kTestFileIO( const char* pcParameterBuffer )
     // 메모리를 해제
     kFreeMemory( pbBuffer );    
 }
+
 /**
  *  파일을 읽고 쓰는 속도를 측정
  */
@@ -2214,6 +2233,7 @@ static void kFlushCache( const char* pcParameterBuffer )
     }
     kPrintf( "Total Time = %d ms\n", kGetTickCount() - qwTickCount );
 }
+
 /**
  *  시리얼 포트로부터 데이터를 수신하여 파일로 저장
  */
@@ -2356,4 +2376,99 @@ static void kDownloadFile( const char* pcParameterBuffer )
     // 파일을 닫고 파일 시스템 캐시를 내보냄
     fclose( fp );
     kFlushFileSystemCache();
+}
+
+/**
+ *  MP 설정 테이블 정보를 출력
+ */
+static void kShowMPConfigurationTable( const char* pcParameterBuffer )
+{
+    kPrintMPConfigurationTable();
+}
+
+
+/**
+ *  AP(Application Processor)를 시작
+ */
+static void kStartApplicationProcessor( const char* pcParameterBuffer )
+{
+    // AP(Application Processor)를 깨움
+    if( kStartUpApplicationProcessor() == FALSE )
+    {
+        kPrintf( "Application Processor Start Fail\n" );
+        return ;
+    }
+    kPrintf( "Application Processor Start Success\n" );
+    
+    // BSP(Bootstrap Processor)의 APIC ID 출력
+    kPrintf( "Bootstrap Processor[APIC ID: %d] Start Application Processor\n",
+             kGetAPICID() );
+}
+
+/**
+ *  대칭 I/O 모드(Symmetric I/O Mode)로 전환
+ */
+static void kStartSymmetricIOMode( const char* pcParameterBuffer )
+{
+    MPCONFIGRUATIONMANAGER* pstMPManager;
+    BOOL bInterruptFlag;
+
+    // MP 설정 테이블을 분석
+    if( kAnalysisMPConfigurationTable() == FALSE )
+    {
+        kPrintf( "Analyze MP Configuration Table Fail\n" );
+        return ;
+    }
+
+    // MP 설정 매니저를 찾아서 PIC 모드인가 확인
+    pstMPManager = kGetMPConfigurationManager();
+    if( pstMPManager->bUsePICMode == TRUE )
+    {
+        // PIC 모드이면 I/O 포트 어드레스 0x22에 0x70을 먼저 전송하고 
+        // I/O 포트 어드레스 0x23에 0x01을 전송하는 방법으로 IMCR 레지스터에 접근하여
+        // PIC 모드 비활성화
+        kOutPortByte( 0x22, 0x70 );
+        kOutPortByte( 0x23, 0x01 );
+    }
+
+    // PIC 컨트롤러의 인터럽트를 모두 마스크하여 인터럽트가 발생할 수 없도록 함
+    kPrintf( "Mask All PIC Controller Interrupt\n" );
+    kMaskPICInterrupt( 0xFFFF );
+
+    // 프로세서 전체의 로컬 APIC를 활성화
+    kPrintf( "Enable Global Local APIC\n" );
+    kEnableGlobalLocalAPIC();
+    
+    // 현재 코어의 로컬 APIC를 활성화
+    kPrintf( "Enable Software Local APIC\n" );
+    kEnableSoftwareLocalAPIC();
+
+    // 인터럽트를 불가로 설정
+    kPrintf( "Disable CPU Interrupt Flag\n" );
+    bInterruptFlag = kSetInterruptFlag( FALSE );
+    
+    // 모든 인터럽트를 수신할 수 있도록 태스크 우선 순위 레지스터를 0으로 설정
+    kSetTaskPriority( 0 );
+
+    // 로컬 APIC의 로컬 벡터 테이블을 초기화
+    kInitializeLocalVectorTable();
+    
+    // I/O APIC 초기화
+    kPrintf( "Initialize IO Redirection Table\n" );
+    kInitializeIORedirectionTable();
+        
+    // 이전 인터럽트 플래그를 복원
+    kPrintf( "Restore CPU Interrupt Flag\n" );
+    kSetInterruptFlag( bInterruptFlag );
+        
+    kPrintf( "Change Symmetric I/O Mode Complete\n" );
+}
+
+/**
+ *  IRQ와 I/O APIC의 인터럽트 입력 핀(INTIN)의 관계를 저장한 테이블을 표시
+ */
+static void kShowIRQINTINMappingTable( const char* pcParameterBuffer )
+{
+    // I/O APIC를 관리하는 자료구조에 있는 출력 함수를 호출
+    kPrintIRQToINTINMap();
 }

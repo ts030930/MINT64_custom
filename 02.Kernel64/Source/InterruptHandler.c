@@ -1,3 +1,11 @@
+/**
+ *  file    InterruptHandler.c
+ *  date    2009/01/24
+ *  author  kkamagui 
+ *          Copyright(c)2008 All rights reserved by kkamagui
+ *  brief   인터럽트 및 예외 핸들러에 관련된 소스 파일
+ */
+
 #include "InterruptHandler.h"
 #include "PIC.h"
 #include "Keyboard.h"
@@ -7,6 +15,8 @@
 #include "Descriptor.h"
 #include "AssemblyUtility.h"
 #include "HardDisk.h"
+#include "LocalAPIC.h"
+
 /**
  *  공통으로 사용하는 예외 핸들러
  */
@@ -46,8 +56,11 @@ void kCommonInterruptHandler( int iVectorNumber )
     kPrintStringXY( 70, 0, vcBuffer );
     //=========================================================================
     
-    // EOI 전송
+    // PIC 컨트롤러로 EOI 전송
     kSendEOIToPIC( iVectorNumber - PIC_IRQSTARTVECTOR );
+
+    // 로컬 APIC로 EOI 전송
+    kSendEOIToLocalAPIC();
 }
 
 /**
@@ -77,8 +90,11 @@ void kKeyboardHandler( int iVectorNumber )
         kConvertScanCodeAndPutQueue( bTemp );
     }
 
-    // EOI 전송
+    // PIC 컨트롤러로 EOI 전송
     kSendEOIToPIC( iVectorNumber - PIC_IRQSTARTVECTOR );
+
+    // 로컬 APIC로 EOI 전송
+    kSendEOIToLocalAPIC();
 }
 
 /**
@@ -100,9 +116,12 @@ void kTimerHandler( int iVectorNumber )
     kPrintStringXY( 70, 0, vcBuffer );
     //=========================================================================
     
-    // EOI 전송
+    // PIC 컨트롤러로 EOI 전송
     kSendEOIToPIC( iVectorNumber - PIC_IRQSTARTVECTOR );
 
+    // 로컬 APIC로 EOI 전송
+    kSendEOIToLocalAPIC();
+    
     // 타이머 발생 횟수를 증가
     g_qwTickCount++;
 
@@ -115,7 +134,9 @@ void kTimerHandler( int iVectorNumber )
     }
 }
 
-// Device Not Available 예외의 핸들러
+/**
+ *  Device Not Available 예외의 핸들러
+ */
 void kDeviceNotAvailableHandler( int iVectorNumber )
 {
     TCB* pstFPUTask, * pstCurrentTask;
@@ -194,19 +215,12 @@ void kHDDHandler( int iVectorNumber )
     kPrintStringXY( 10, 0, vcBuffer );
     //=========================================================================
 
-    // 첫 번째 PATA 포트의 인터럽트 벡터(IRQ 14) 처리
-    if( iVectorNumber - PIC_IRQSTARTVECTOR == 14 )
-    {
-        // 첫 번째 PATA 포트의 인터럽트 발생 여부를 TRUE로 설정
-        kSetHDDInterruptFlag( TRUE, TRUE );
-    }
-    // 두 번째 PATA 포트의 인터럽트 벡터(IRQ 15) 처리
-    else
-    {
-        // 두 번째 PATA 포트의 인터럽트 발생 여부를 TRUE로 설정
-        kSetHDDInterruptFlag( FALSE, TRUE );
-    }
+    // 첫 번째 PATA 포트의 인터럽트 발생 여부를 TRUE로 설정
+    kSetHDDInterruptFlag( TRUE, TRUE );
     
-    // EOI 전송
+    // PIC 컨트롤러로 EOI 전송
     kSendEOIToPIC( iVectorNumber - PIC_IRQSTARTVECTOR );
+
+    // 로컬 APIC로 EOI 전송
+    kSendEOIToLocalAPIC();
 }

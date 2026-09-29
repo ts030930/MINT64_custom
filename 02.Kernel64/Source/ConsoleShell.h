@@ -1,3 +1,11 @@
+/**
+ *  file    ConsoleShell.h
+ *  date    2009/01/31
+ *  author  kkamagui 
+ *          Copyright(c)2008 All rights reserved by kkamagui
+ *  brief   콘솔 셸에 관련된 헤더 파일
+ */
+
 #ifndef __CONSOLESHELL_H__
 #define __CONSOLESHELL_H__
 
@@ -98,5 +106,9 @@ static void kTestFileIO( const char* pcParameterBuffer );
 static void kFlushCache( const char* pcParameterBuffer );
 static void kTestPerformance( const char* pcParameterBuffer );
 static void kDownloadFile( const char* pcParameterBuffer );
+static void kShowMPConfigurationTable( const char* pcParameterBuffer );
+static void kStartApplicationProcessor( const char* pcParameterBuffer );
+static void kStartSymmetricIOMode( const char* pcParameterBuffer );
+static void kShowIRQINTINMappingTable( const char* pcParameterBuffer );
 
 #endif /*__CONSOLESHELL_H__*/

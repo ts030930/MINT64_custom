@@ -62,4 +62,4 @@ clean:
 	make -C 04.Utility clean
 	rm -f Disk.img
 run :
-	qemu-system-x86_64 -L . -m 64 -fda ./Disk.img -boot a -rtc base=localtime -M pc -serial tcp::4444,server,nowait -display curses
+	qemu-system-x86_64 -L . -m 64 -fda ~/MINT64/Disk.img -hda ~/MINT64/HDD.img -boot a -rtc base=localtime -M pc -serial tcp::4444,server,nowait -smp 4,sockets=4,cores=1,threads=1

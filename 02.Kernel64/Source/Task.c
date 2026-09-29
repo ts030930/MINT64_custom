@@ -459,7 +459,8 @@ void kSchedule( void )
             TASK_PROCESSORTIME - gs_stScheduler.iProcessorTime;
     }
     
-    if(gs_stScheduler.qwLastFPUUsedTaskID != pstRunningTask->stLink.qwID)
+    // 다음에 수행할 태스크가 FPU를 쓴 태스크가 아니라면 TS 비트 설정
+    if( gs_stScheduler.qwLastFPUUsedTaskID != pstNextTask->stLink.qwID )
     {
         kSetTS();
     }
@@ -541,7 +542,8 @@ BOOL kScheduleInInterrupt( void )
     // 임계 영역 끝
     kUnlockForSystemData( bPreviousFlag );
 
-    if(gs_stScheduler.qwLastFPUUsedTaskID != pstRunningTask->stLink.qwID)
+    // 다음에 수행할 태스크가 FPU를 쓴 태스크가 아니라면 TS 비트 설정
+    if( gs_stScheduler.qwLastFPUUsedTaskID != pstNextTask->stLink.qwID )
     {
         kSetTS();
     }

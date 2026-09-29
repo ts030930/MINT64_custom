@@ -1,11 +1,22 @@
+/**
+ *  file    Task.h
+ *  date    2009/02/19
+ *  author  kkamagui 
+ *          Copyright(c)2008 All rights reserved by kkamagui
+ *  brief   태스크를 처리하는 함수에 관련된 파일
+ */
+
 #ifndef __TASK_H__
 #define __TASK_H__
 
 #include "Types.h"
 #include "List.h"
 
-
+////////////////////////////////////////////////////////////////////////////////
+//
 // 매크로
+//
+////////////////////////////////////////////////////////////////////////////////
 // SS, RSP, RFLAGS, CS, RIP + ISR에서 저장하는 19개의 레지스터
 #define TASK_REGISTERCOUNT     ( 5 + 19 )
 #define TASK_REGISTERSIZE       8
@@ -79,7 +90,12 @@
 #define GETTCBFROMTHREADLINK( x )   ( TCB* ) ( ( QWORD ) ( x ) - offsetof( TCB, \
                                       stThreadLink ) )
 
+
+////////////////////////////////////////////////////////////////////////////////
+//
 // 구조체
+//
+////////////////////////////////////////////////////////////////////////////////
 // 1바이트로 정렬
 #pragma pack( push, 1 )
 
@@ -90,15 +106,15 @@ typedef struct kContextStruct
 } CONTEXT;
 
 // 태스크(프로세스 및 스레드)의 상태를 관리하는 자료구조
-// FPU 콘텍스트가 추가되었기 때문에, 자료구조의 크기가 16의 배수로 정렬되어야 함
+// FPU 콘텍스트가 추가되었기 때문에 자료구조의 크기가 16의 배수로 정렬되어야 함
 typedef struct kTaskControlBlockStruct
 {
-    // 다음 데이터의 위치와 id
+    // 다음 데이터의 위치와 ID
     LISTLINK stLink;
-
+    
     // 플래그
     QWORD qwFlags;
-
+    
     // 프로세스 메모리 영역의 시작과 크기
     void* pvMemoryAddress;
     QWORD qwMemorySize;
@@ -111,23 +127,26 @@ typedef struct kTaskControlBlockStruct
     
     // 부모 프로세스의 ID
     QWORD qwParentProcessID;
-
-    // FPU 콘텍스트는 16의 배수로 정렬되어야 하므로,
-    // 앞으로 추가할 데이터는 현재 라인 아래에 추가해야 함
-    QWORD vqwFPUContext[ 512 / 8];
+    
+    // FPU 콘텍스트는 16의 배수로 정렬되어야 하므로, 앞으로 추가할 데이터는 현재 라인
+    // 아래에 추가해야 함
+    QWORD vqwFPUContext[ 512 / 8 ]; 
 
     // 자식 스레드의 리스트
     LIST stChildThreadList;
 
     // 콘텍스트
     CONTEXT stContext;
-    
+
     // 스택의 어드레스와 크기
     void* pvStackAddress;
     QWORD qwStackSize;
-
+    
     // FPU 사용 여부
     BOOL bFPUUsed;
+    
+    // TCB 전체를 16바이트 배수로 맞추기 위한 패딩
+    char vcPadding[ 11 ];
 } TCB;
 
 // TCB 풀의 상태를 관리하는 자료구조
@@ -165,18 +184,21 @@ typedef struct kSchedulerStruct
     
     // 유휴 태스크(Idle Task)에서 사용한 프로세서 시간
     QWORD qwSpendProcessorTimeInIdleTask;
-
+    
     // 마지막으로 FPU를 사용한 태스크의 ID
     QWORD qwLastFPUUsedTaskID;
 } SCHEDULER;
 
 #pragma pack( pop )
 
-
+////////////////////////////////////////////////////////////////////////////////
+//
 // 함수
-//======================================================================
+//
+////////////////////////////////////////////////////////////////////////////////
+//==============================================================================
 //  태스크 풀과 태스크 관련
-//======================================================================
+//==============================================================================
 static void kInitializeTCBPool( void );
 static TCB* kAllocateTCB( void );
 static void kFreeTCB( QWORD qwID );
@@ -185,9 +207,9 @@ TCB* kCreateTask( QWORD qwFlags, void* pvMemoryAddress, QWORD qwMemorySize,
 static void kSetUpTask( TCB* pstTCB, QWORD qwFlags, QWORD qwEntryPointAddress,
         void* pvStackAddress, QWORD qwStackSize );
 
-//======================================================================
+//==============================================================================
 //  스케줄러 관련
-//======================================================================
+//==============================================================================
 void kInitializeScheduler( void );
 void kSetRunningTask( TCB* pstTask );
 TCB* kGetRunningTask( void );
@@ -208,9 +230,9 @@ BOOL kIsTaskExist( QWORD qwID );
 QWORD kGetProcessorLoad( void );
 static TCB* kGetProcessByThread( TCB* pstThread );
 
-//=============================================================
+//==============================================================================
 //  유휴 태스크 관련
-//=============================================================
+//==============================================================================
 void kIdleTask( void );
 void kHaltProcessorByLoad( void );
 
